@@ -15,10 +15,13 @@ package ch.qos.logback.classic;
 
 import java.io.ObjectStreamException;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
@@ -361,6 +364,37 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
         return childLogger;
     }
 
+    private void prescreen (LoggingEvent event) {
+
+        if (activatePattern != null) {
+            Matcher matcher = activatePattern.matcher(event.getFormattedMessage());
+            if (matcher.matches()) {
+                loggerContext.setTracingActive();
+            }
+        }
+
+        if (deactivatePattern != null) {
+            Matcher matcher = deactivatePattern.matcher(event.getFormattedMessage());
+            if (matcher.matches()) {
+                loggerContext.setTracingInactive();
+            }
+        }
+
+        if (delayedActivatePattern != null) {
+            Matcher matcher = delayedActivatePattern.matcher(event.getMessage());
+            if (matcher.matches()) {
+                Collection<ILoggingEvent> buffered = event.getLoggerContext().getAllLogEvents();
+
+                if (buffered!=null)
+                    for (ILoggingEvent e : buffered) {
+                        appendLoggerEvent( (LoggingEvent)e, null);
+                    }
+
+                loggerContext.setTracingActive();
+            }
+        }
+    }
+
     /**
      * The next methods are not merged into one because of the time we gain by not
      * creating a new Object[] with the params. This reduces the cost of not
@@ -370,53 +404,76 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     private void filterAndLog_0_Or3Plus(final String localFQCN, final Marker marker, final Level level, final String msg, final Object[] params,
                     final Throwable t) {
 
-        final FilterReply decision = loggerContext.getTurboFilterChainDecision_0_3OrMore(marker, this, level, msg, params, t);
+        LoggingEvent le = new LoggingEvent(localFQCN, this, level, msg, t, params);
+        prescreen(le);
 
-        if (decision == FilterReply.NEUTRAL) {
-            if (effectiveLevelInt > level.levelInt) {
+        if (!loggerContext.isTracingActive()) {
+            final FilterReply decision = loggerContext.getTurboFilterChainDecision_0_3OrMore(marker, this, level, msg, params, t);
+
+            if (decision == FilterReply.NEUTRAL) {
+                if (effectiveLevelInt > level.levelInt) {
+                    loggerContext.putLogEvent(le);
+                    return;
+                }
+            } else if (decision == FilterReply.DENY) {
+                loggerContext.putLogEvent(le);
                 return;
             }
-        } else if (decision == FilterReply.DENY) {
-            return;
         }
 
-        buildLoggingEventAndAppend(localFQCN, marker, level, msg, params, t);
+        appendLoggerEvent(le,marker);
     }
 
     private void filterAndLog_1(final String localFQCN, final Marker marker, final Level level, final String msg, final Object param, final Throwable t) {
 
-        final FilterReply decision = loggerContext.getTurboFilterChainDecision_1(marker, this, level, msg, param, t);
+        LoggingEvent le = new LoggingEvent(localFQCN, this, level, msg, t, new Object[] { param });
+        prescreen(le);
 
-        if (decision == FilterReply.NEUTRAL) {
-            if (effectiveLevelInt > level.levelInt) {
+        if (!loggerContext.isTracingActive()) {
+            final FilterReply decision = loggerContext.getTurboFilterChainDecision_1(marker, this, level, msg, param, t);
+
+            if (decision == FilterReply.NEUTRAL) {
+                if (effectiveLevelInt > level.levelInt) {
+                    loggerContext.putLogEvent(le);
+                    return;
+                }
+            } else if (decision == FilterReply.DENY) {
+                loggerContext.putLogEvent(le);
                 return;
             }
-        } else if (decision == FilterReply.DENY) {
-            return;
         }
-
-        buildLoggingEventAndAppend(localFQCN, marker, level, msg, new Object[] { param }, t);
+        appendLoggerEvent(le,marker);
     }
 
     private void filterAndLog_2(final String localFQCN, final Marker marker, final Level level, final String msg, final Object param1, final Object param2,
                     final Throwable t) {
+        LoggingEvent le = new LoggingEvent(localFQCN, this, level, msg, t, new Object[] { param1, param2 });
+        prescreen(le);
 
-        final FilterReply decision = loggerContext.getTurboFilterChainDecision_2(marker, this, level, msg, param1, param2, t);
+        if (!loggerContext.isTracingActive()) {
+            final FilterReply decision = loggerContext.getTurboFilterChainDecision_2(marker, this, level, msg, param1, param2, t);
 
-        if (decision == FilterReply.NEUTRAL) {
-            if (effectiveLevelInt > level.levelInt) {
+            if (decision == FilterReply.NEUTRAL) {
+                if (effectiveLevelInt > level.levelInt) {
+                    loggerContext.putLogEvent(le);
+                    return;
+                }
+            } else if (decision == FilterReply.DENY) {
+                loggerContext.putLogEvent(le);
                 return;
             }
-        } else if (decision == FilterReply.DENY) {
-            return;
         }
-
-        buildLoggingEventAndAppend(localFQCN, marker, level, msg, new Object[] { param1, param2 }, t);
+        appendLoggerEvent(le,marker);
     }
 
     private void buildLoggingEventAndAppend(final String localFQCN, final Marker marker, final Level level, final String msg, final Object[] params,
                     final Throwable t) {
         LoggingEvent le = new LoggingEvent(localFQCN, this, level, msg, t, params);
+        le.setMarker(marker);
+        callAppenders(le);
+    }
+
+    private void appendLoggerEvent (final LoggingEvent le, final Marker marker) {
         le.setMarker(marker);
         callAppenders(le);
     }
@@ -466,6 +523,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isDebugEnabled(Marker marker) {
+        if (loggerContext.isTracingActive())
+            return true;
+
         final FilterReply decision = callTurboFilters(marker, Level.DEBUG);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= Level.DEBUG_INT;
@@ -563,6 +623,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isInfoEnabled(Marker marker) {
+        if (loggerContext.isTracingActive())
+            return  true;
+
         FilterReply decision = callTurboFilters(marker, Level.INFO);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= Level.INFO_INT;
@@ -620,6 +683,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isTraceEnabled(Marker marker) {
+        if (loggerContext.isTracingActive())
+            return true;
+
         final FilterReply decision = callTurboFilters(marker, Level.TRACE);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= Level.TRACE_INT;
@@ -637,6 +703,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isErrorEnabled(Marker marker) {
+        if (loggerContext.isTracingActive())
+            return true;
+
         FilterReply decision = callTurboFilters(marker, Level.ERROR);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= Level.ERROR_INT;
@@ -654,6 +723,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isWarnEnabled(Marker marker) {
+        if (loggerContext.isTracingActive())
+            return true;
+
         FilterReply decision = callTurboFilters(marker, Level.WARN);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= Level.WARN_INT;
@@ -668,6 +740,9 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     }
 
     public boolean isEnabledFor(Marker marker, Level level) {
+        if (loggerContext.isTracingActive())
+            return true;
+
         FilterReply decision = callTurboFilters(marker, level);
         if (decision == FilterReply.NEUTRAL) {
             return effectiveLevelInt <= level.levelInt;
@@ -786,4 +861,41 @@ public final class Logger implements org.slf4j.Logger, LocationAwareLogger, Appe
     protected Object readResolve() throws ObjectStreamException {
         return LoggerFactory.getLogger(getName());
     }
+
+    transient String activateRegex;
+    transient String deactivateRegex;
+    transient String delayedActivateRegex;
+
+    transient Pattern activatePattern;
+    transient Pattern delayedActivatePattern;
+    transient Pattern deactivatePattern;
+
+    public String getActivateRegex() {
+        return activateRegex;
+    }
+
+    public void setActivateRegex(String activateRegex) {
+        this.activateRegex = activateRegex;
+        activatePattern = Pattern.compile(activateRegex);
+    }
+
+    public String getDeactivateRegex() {
+        return deactivateRegex;
+    }
+
+    public void setDeactivateRegex(String deactivateRegex) {
+        this.deactivateRegex = deactivateRegex;
+        deactivatePattern = Pattern.compile(deactivateRegex);
+    }
+
+    public String getDelayedActivateRegex() {
+        return delayedActivateRegex;
+    }
+
+    public void setDelayedActivateRegex(String delayedActivateRegex) {
+        this.delayedActivateRegex = delayedActivateRegex;
+        delayedActivatePattern = Pattern.compile(delayedActivateRegex);
+    }
+
+
 }

@@ -53,6 +53,7 @@ public class JoranConfigurator extends JoranConfiguratorBase<ILoggingEvent> {
 
         rs.addRule(new ElementSelector("configuration/logger"), new LoggerAction());
         rs.addRule(new ElementSelector("configuration/logger/level"), new LevelAction());
+        rs.addRule(new ElementSelector("configuration/logger/tracingRegex"), new TracingRegexAction());
 
         rs.addRule(new ElementSelector("configuration/root"), new RootLoggerAction());
         rs.addRule(new ElementSelector("configuration/root/level"), new LevelAction());

@@ -19,6 +19,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.Map;
 
+import ch.qos.logback.classic.LoggerContext;
 import org.slf4j.Marker;
 import org.slf4j.helpers.MessageFormatter;
 
@@ -59,6 +60,10 @@ public class PubLoggingEventVO implements ILoggingEvent, Serializable {
 
     public LoggerContextVO getLoggerContextVO() {
         return loggerContextVO;
+    }
+
+    public LoggerContext getLoggerContext() {
+        return null;
     }
 
     public String getLoggerName() {

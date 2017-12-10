@@ -15,22 +15,14 @@ package ch.qos.logback.classic;
 
 import static ch.qos.logback.core.CoreConstants.EVALUATOR_MAP;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
+import ch.qos.logback.classic.spi.*;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.Marker;
 
-import ch.qos.logback.classic.spi.LoggerComparator;
-import ch.qos.logback.classic.spi.LoggerContextListener;
-import ch.qos.logback.classic.spi.LoggerContextVO;
-import ch.qos.logback.classic.spi.TurboFilterList;
 import ch.qos.logback.classic.turbo.TurboFilter;
 import ch.qos.logback.classic.util.LoggerNameUtil;
 import ch.qos.logback.core.ContextBase;
@@ -40,6 +32,8 @@ import ch.qos.logback.core.spi.LifeCycle;
 import ch.qos.logback.core.status.StatusListener;
 import ch.qos.logback.core.status.StatusManager;
 import ch.qos.logback.core.status.WarnStatus;
+import java.util.Queue;
+import org.apache.commons.collections4.queue.CircularFifoQueue;
 
 /**
  * LoggerContext glues many of the logback-classic components together. In
@@ -70,6 +64,56 @@ public class LoggerContext extends ContextBase implements ILoggerFactory, LifeCy
 
     int resetCount = 0;
     private List<String> frameworkPackages;
+
+
+    /** Capture the state that which thread ID is currently in the 'hot' tracing state */
+    private Map <Long, Long> tracingThreads = new ConcurrentHashMap<Long, Long>();
+
+    private Map <Long, Queue<ILoggingEvent>> logsHistory = new ConcurrentHashMap<Long, Queue<ILoggingEvent>>();
+
+    private static long TIMEOUT = 10000;
+
+    public void setTracingActive () {
+        tracingThreads.put(Thread.currentThread().getId(), System.currentTimeMillis());
+    }
+
+    //public void setTracingActiveWithTimeout (long timeMs) {
+        //TODO
+    //}
+
+    public void setTracingInactive () {
+        tracingThreads.remove(Thread.currentThread().getId());
+    }
+
+    public boolean isTracingActive() {
+
+        Long activatedTime = tracingThreads.get(Thread.currentThread().getId());
+        if (activatedTime == null)
+            return false;
+        else if (System.currentTimeMillis() - activatedTime > TIMEOUT) {
+            setTracingInactive();
+            return false;
+        } else
+            return true;
+    }
+
+    public void putLogEvent (ILoggingEvent event) {
+        long threadId = Thread.currentThread().getId();
+
+        Queue<ILoggingEvent> queue = logsHistory.get(threadId);
+
+        if (queue == null) {
+            queue = new CircularFifoQueue<ILoggingEvent>(2000);
+            logsHistory.put(threadId, queue);
+        }
+
+        queue.add(event);
+    }
+
+    public Collection<ILoggingEvent> getAllLogEvents () {
+        long threadId = Thread.currentThread().getId();
+        return logsHistory.get(threadId);
+    }
 
     public LoggerContext() {
         super();

@@ -15,6 +15,7 @@ package ch.qos.logback.classic.spi;
 
 import java.util.Map;
 
+import ch.qos.logback.classic.LoggerContext;
 import org.slf4j.Marker;
 
 import ch.qos.logback.classic.Level;
@@ -42,6 +43,8 @@ public interface ILoggingEvent extends DeferredProcessingAware {
     String getLoggerName();
 
     LoggerContextVO getLoggerContextVO();
+
+    LoggerContext getLoggerContext();
 
     IThrowableProxy getThrowableProxy();
 

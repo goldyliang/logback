@@ -213,6 +213,10 @@ public class LoggingEvent implements ILoggingEvent {
         return loggerContextVO;
     }
 
+    public LoggerContext getLoggerContext() {
+        return loggerContext;
+    }
+
     public void setLoggerContextRemoteView(LoggerContextVO loggerContextVO) {
         this.loggerContextVO = loggerContextVO;
     }

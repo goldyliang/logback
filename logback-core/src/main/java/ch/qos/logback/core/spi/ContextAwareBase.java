@@ -68,7 +68,7 @@ public class ContextAwareBase implements ContextAware {
         return declaredOrigin;
     }
 
-    public void addStatus(Status status) {
+    public void     addStatus(Status status) {
         if (context == null) {
             if (noContextWarning++ == 0) {
                 System.out.println("LOGBACK: No context given for " + this);
